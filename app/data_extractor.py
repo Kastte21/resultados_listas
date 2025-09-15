@@ -8,7 +8,7 @@ from .database import get_db_connection
 logger = logging.getLogger(__name__)
 
 def export_results(day: str, month: str):
-    logger.info(f"Starting export for day: {day}, month: {month}")
+    logger.info(f"\U0001F4E4 Iniciando exportación para el día:  {day}, mes: {month}")
 
     query = f"""
         SELECT documento, telefono, start, estado, obs, dia
@@ -29,7 +29,7 @@ def export_results(day: str, month: str):
             )
         
         if df.is_empty():
-            logger.warning("No records found for the specified day and month. No file will be created.")
+            logger.warning("\u26A0\uFE0F No se encontraron registros para el día y mes especificados. No se creará ningún archivo.")
             return
 
         output_filename = f"r_{day}_{month}_{date.today().strftime('%Y%m%d')}.txt"
@@ -37,7 +37,7 @@ def export_results(day: str, month: str):
         
         df.write_csv(output_path, separator="|")
         
-        logger.info(f"✅ Export successful. {df.height} records saved to {output_path}")
+        logger.info(f"\u2705 Exportación exitosa. Se guardaron {df.height} registros en {output_path}.")
 
     except Exception as e:
-        logger.error(f"❌ An error occurred during data export: {e}", exc_info=True)
+        logger.error(f"\u274C Ocurrió un error durante la exportación de datos: {e}", exc_info=True)

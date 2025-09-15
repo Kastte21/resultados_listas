@@ -10,12 +10,12 @@ def get_db_connection():
     conn = None
     try:
         conn = psycopg2.connect(**settings.DB_CONFIG)
-        logger.info("Database connection established.")
+        #logger.info("Database connection established.")
         yield conn
     except psycopg2.OperationalError as e:
-        logger.error(f"Failed to connect to the database: {e}")
+        logger.error(f"Error al conectar a la base de datos: {e}")
         raise
     finally:
         if conn:
             conn.close()
-            logger.info("Database connection closed.")
+            #logger.info("Database connection closed.")
