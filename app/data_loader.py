@@ -1,6 +1,8 @@
 import polars as pl
 import logging
 from io import StringIO
+import pandas as pd
+import hashlib
 
 from . import settings, utils
 from .database import get_db_connection
@@ -20,8 +22,14 @@ def process_and_load_files():
             total_inserted += inserted_count
             logger.info(f"\u2705 Se insertaron correctamente {inserted_count} nuevos registros desde {file_path.name}.")
         except Exception as e:
-            logger.error(f"\u274C Error al procesar el archivo {file_path.name}. Error: {e}", exc_info=True)
-    
+            logger.warning(f"\u26A0\uFE0F Error con Polars en {file_path.name}. Reintentando con Pandas. Error: {e}")
+            try:
+                inserted_count = _process_file_with_pandas(file_path)
+                total_inserted += inserted_count
+                logger.info(f"\u2705 Se insertaron correctamente {inserted_count} registros desde {file_path.name} usando Pandas.")
+            except Exception as e2:
+                logger.error(f"\u274C Error al procesar el archivo {file_path.name} incluso con Pandas. Error: {e2}", exc_info=True)
+
     logger.info("=" * 60)
     logger.info(f"\U0001F4C4 Proceso finalizado. Total de nuevos registros insertados: {total_inserted}.")
 
@@ -97,3 +105,41 @@ def _load_data_with_copy(df: pl.DataFrame, conn) -> int:
         cursor.copy_expert(sql=copy_sql, file=s_buf)
         conn.commit()
         return cursor.rowcount
+    
+def _process_file_with_pandas(file_path: settings.Path) -> int:
+    df = pd.read_csv(file_path, encoding="utf-8", on_bad_lines="skip")
+
+    if not all(col in df.columns for col in settings.REQUIRED_INPUT_COLUMNS):
+        raise ValueError("Faltan columnas requeridas en el archivo CSV.")
+
+    logger.info(f"\U0001F4C4 [Pandas] Se leyeron {len(df)} filas desde el archivo.")
+
+    df["dia"] = df["start"].astype(str).str[8:10]
+    df["mes"] = df["start"].astype(str).str[5:7]
+    df["obs"] = df["telefono"].apply(lambda x: "CELULAR" if str(x).startswith("9") and len(str(x)) == 9 else "TELEFONO")
+    df["hash_fila"] = df[settings.INPUT_CSV_COLUMNS].fillna("").astype(str).agg('|'.join, axis=1).apply(
+        lambda x: hashlib.md5(x.encode()).hexdigest()
+    )
+
+    with get_db_connection() as conn:
+        hashes = df["hash_fila"].tolist()
+        query = f"SELECT hash_fila FROM {settings.TABLE_NAME} WHERE hash_fila = ANY(%s)"
+        with conn.cursor() as cursor:
+            cursor.execute(query, (hashes,))
+            existing = {row[0] for row in cursor.fetchall()}
+        df_to_insert = df[~df["hash_fila"].isin(existing)]
+
+    if df_to_insert.empty:
+        logger.info("↪ [Pandas] No hay nuevos registros para insertar.")
+        return 0
+
+    s_buf = StringIO()
+    df_to_insert[settings.FINAL_TABLE_COLUMNS].to_csv(s_buf, index=False)
+    s_buf.seek(0)
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            copy_sql = f"COPY {settings.TABLE_NAME} ({','.join(settings.FINAL_TABLE_COLUMNS)}) FROM STDIN WITH (FORMAT CSV)"
+            cursor.copy_expert(sql=copy_sql, file=s_buf)
+            conn.commit()
+            return cursor.rowcount
