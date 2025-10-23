@@ -1,3 +1,4 @@
+#app/data_extractor.py
 import polars as pl
 import logging
 from datetime import date
@@ -8,7 +9,7 @@ from .database import get_db_connection
 logger = logging.getLogger(__name__)
 
 def export_results(day: str, month: str):
-    logger.info(f"\U0001F4E4 Iniciando exportación para el día:  {day}, mes: {month}")
+    logger.info(f" Iniciando exportación para el día:  {day}, mes: {month}")
 
     query = f"""
         SELECT documento, telefono, start, estado, obs, dia
